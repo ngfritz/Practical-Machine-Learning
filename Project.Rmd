@@ -1,0 +1,89 @@
+---
+title: "Practical Machine Learning Project"
+author: "GN"
+date: "24 September 2015"
+output: html_document
+---
+**Prediction algorithm for Human Activity Recognition data**
+
+Course Project for Practical Machine Learning
+
+Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+The goal of the project is to predict the manner in which they did the exercise.
+
+
+```{r packages}
+library (caret)
+library(rpart)
+library(rattle)
+library(rpart.plot)
+library(randomForest)
+```
+
+The dataset was loaded and cleaned:
+-the first 8 variables were removed because they do not contain relevant information for the prediction;
+-those variables which contained more NAs than real data were removed.
+
+```{r load data and clean}
+fulldata<-read.csv ("pml-training.csv", na.strings=c("NA",""), header=TRUE)
+
+#remove the first 8 column
+fulldata<-fulldata[,8:length(colnames(fulldata))]
+#remove NA-s
+data_na <- fulldata 
+for(i in 1:length(fulldata)) { 
+        if( sum( is.na( fulldata[, i] ) ) /nrow(fulldata) >= .5 ) { #if half or more of the data is NAs
+        for(j in 1:length(data_na)) {
+            if( length( grep(names(fulldata[i]), names(data_na)[j]) ) ==1)  { #if the columns are the same:
+                data_na <- data_na[ , -j] #Remove that column
+            }   
+        } 
+    }
+}
+prep_data<-data_na
+```
+
+The training data was split to two subsets.
+```{r split data}
+set.seed(040180)
+inTrain<-createDataPartition(y=prep_data$classe, p=0.7, list=FALSE)
+training<-prep_data[inTrain,]
+testing<-prep_data[-inTrain,]
+```
+Then some prediction models were created. The out of sample error was estimated with K-fold cross validation (k=10 at each case).
+
+First a classification tree was built with principal component analysis:
+
+
+```{r, classification tree+ prepoc, cross val}
+
+modFit1 <- train(training$classe ~ .,  preProcess=c("pca", "center", "scale"), trControl=trainControl(method = "cv", number = 10), data = training, method="rpart")
+print(modFit1, digits=3)
+```
+
+Since the CART model in not grate a random forest
+```{r random forest +CV}
+modelFit2<-train(training$classe~., trControl=trainControl(method = "cv", number = 10), data=training, method="rf", proc=TRUE)
+print(modelFit2, digits=3)
+
+```
+
+and a boost model were built:
+```{r boost, CV}
+modelFit3<-train(training$classe~., trControl=trainControl(method = "cv", number = 10), data=training, method="gbm", verbose=FALSE)
+print(modelFit3, digits=3)
+
+```
+
+Both the RF and the Boost models have very high accuracy. There predictive value was tested by the confusion matrix.
+```{r test}
+
+confusionMatrix(testing$classe, predict(modelFit2, testing))
+confusionMatrix(testing$classe, predict(modelFit3, testing))
+```
+Acccording to the confusion matrices the random forest model is the best one which will be tested with the 20 test data.
+
+
